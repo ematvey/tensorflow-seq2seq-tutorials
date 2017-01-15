@@ -1,5 +1,5 @@
 # tensorflow-RNN
-Implementing RNNs in TensorFlow by hand
+Implementing RNNs in TensorFlow for learning purposes
 
 **1 - [simple sequence-to-sequence model with dynamic unrolling](1-seq2seq.ipynb)** (work in progress)
 > Deliberately slow-moving, explicit tutorial. I tried to thoroughly explain everything that I found in any way confusing.
