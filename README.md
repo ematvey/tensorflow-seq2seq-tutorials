@@ -14,4 +14,5 @@
 ![2-seq2seq-feed-previous](pictures/2-seq2seq-feed-previous.png)
 *Picture from [Deep Learning for Chatbots](http://www.wildml.com/2016/04/deep-learning-for-chatbots-part-1-introduction/)*
 
-More to follow.
+**3 - [playing with new `tf.contrib.seq2seq`](3-seq2seq-native-new.ipynb)**
+> New (Jan 2017) dynamic seq2seq had just landed in `contrib`. Let's see what it's made of.
