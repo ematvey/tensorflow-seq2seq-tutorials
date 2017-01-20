@@ -7,22 +7,19 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.layers import embedding_lookup_unique
-from tensorflow.contrib.rnn import EmbeddingWrapper, LSTMCell, LSTMStateTuple
+from tensorflow.contrib.rnn import EmbeddingWrapper, LSTMCell, LSTMStateTuple, GRUCell
 
 import helpers
 
 
 class Seq2SeqModel():
     """Seq2Seq model usign blocks from new `tf.contrib.seq2seq`.
-    Required TF 1.0.0-alpha"""
+    Requires TF 1.0.0-alpha"""
 
     PAD = 0
     EOS = 1
 
-    def __init__(self,
-                 vocab_size=10,
-                 input_embedding_size=20,
-                 encoder_hidden_units=3,
+    def __init__(self, encoder_cell, decoder_cell, vocab_size, embedding_size,
                  bidirectional=True,
                  attention=False,
                  debug=False):
@@ -31,14 +28,17 @@ class Seq2SeqModel():
         self.attention = attention
 
         self.vocab_size = vocab_size
-        self.input_embedding_size = input_embedding_size
+        self.embedding_size = embedding_size
 
-        self.encoder_hidden_units = encoder_hidden_units
-        self.decoder_hidden_units = encoder_hidden_units
-        if self.bidirectional:
-            self.decoder_hidden_units *= 2
+        self.encoder_cell = encoder_cell
+        self.decoder_cell = decoder_cell
 
         self._make_graph()
+
+    @property
+    def decoder_hidden_units(self):
+        # @TODO: is this correct for LSTMStateTuple?
+        return self.decoder_cell.output_size
 
     def _make_graph(self):
         if self.debug:
@@ -49,13 +49,11 @@ class Seq2SeqModel():
         self._init_decoder_train_connectors()
         self._init_embeddings()
 
-        self.encoder_cell = LSTMCell(self.encoder_hidden_units)
         if self.bidirectional:
             self._init_bidirectional_encoder()
         else:
-            raise NotImplementedError
+            self._init_simple_encoder()
 
-        self.decoder_cell = LSTMCell(self.decoder_hidden_units)
         self._init_decoder()
 
         self._init_optimizer()
@@ -85,6 +83,7 @@ class Seq2SeqModel():
             name='encoder_inputs_length',
         )
 
+        # required for training, not required for testing
         self.decoder_targets = tf.placeholder(
             shape=(None, None),
             dtype=tf.int32,
@@ -98,7 +97,7 @@ class Seq2SeqModel():
 
     def _init_decoder_train_connectors(self):
         """
-        During training, `decoder_targets` would serve as basis for both `decoder_inputs`
+        During training, `decoder_targets`
         and decoder logits. This means that their shapes should be compatible.
 
         Here we do a bit of plumbing to set this up.
@@ -114,13 +113,15 @@ class Seq2SeqModel():
 
             decoder_train_targets = tf.concat_v2([self.decoder_targets, PAD_SLICE], axis=0)
             decoder_train_targets_seq_len, _ = tf.unstack(tf.shape(decoder_train_targets))
-            decoder_train_targets_eos_mask = tf.transpose(
-                tf.one_hot(self.decoder_train_length - 1, decoder_train_targets_seq_len, dtype=tf.int32),
-                [1, 0])
-            decoder_train_targets = tf.add(
-                decoder_train_targets,
-                decoder_train_targets_eos_mask,
-            )  # hacky way using one_hot to put EOS symbol at the end of target sequence
+            decoder_train_targets_eos_mask = tf.one_hot(self.decoder_train_length - 1,
+                                                        decoder_train_targets_seq_len,
+                                                        on_value=self.EOS, off_value=self.PAD,
+                                                        dtype=tf.int32)
+            decoder_train_targets_eos_mask = tf.transpose(decoder_train_targets_eos_mask, [1, 0])
+
+            # hacky way using one_hot to put EOS symbol at the end of target sequence
+            decoder_train_targets = tf.add(decoder_train_targets,
+                                           decoder_train_targets_eos_mask)
 
             self.decoder_train_targets = decoder_train_targets
 
@@ -138,7 +139,7 @@ class Seq2SeqModel():
 
             self.embedding_matrix = tf.get_variable(
                 name="embedding_matrix",
-                shape=[self.vocab_size, self.input_embedding_size],
+                shape=[self.vocab_size, self.embedding_size],
                 initializer=initializer,
                 dtype=tf.float32)
 
@@ -147,6 +148,17 @@ class Seq2SeqModel():
 
             self.decoder_train_inputs_embedded = embedding_lookup_unique(
                 self.embedding_matrix, self.decoder_train_inputs)
+
+    def _init_simple_encoder(self):
+        with tf.variable_scope("Encoder") as scope:
+            (self.encoder_outputs, self.encoder_state) = (
+                tf.nn.dynamic_rnn(cell=self.encoder_cell,
+                                  inputs=self.encoder_inputs_embedded,
+                                  sequence_length=self.encoder_inputs_length,
+                                  time_major=True,
+                                  dtype=tf.float32,
+                                  scope=scope)
+                )
 
     def _init_bidirectional_encoder(self):
         with tf.variable_scope("BidirectionalEncoder") as scope:
@@ -166,13 +178,16 @@ class Seq2SeqModel():
 
             self.encoder_outputs = tf.concat_v2((encoder_fw_outputs, encoder_fw_outputs), 2)
 
-            encoder_state_c = tf.concat_v2(
-                (encoder_fw_state.c, encoder_bw_state.c), 1)
+            if isinstance(encoder_fw_state, LSTMStateTuple):
 
-            encoder_state_h = tf.concat_v2(
-                (encoder_fw_state.h, encoder_bw_state.h), 1)
+                encoder_state_c = tf.concat_v2(
+                    (encoder_fw_state.c, encoder_bw_state.c), 1, name='bidirectional_concat_c')
+                encoder_state_h = tf.concat_v2(
+                    (encoder_fw_state.h, encoder_bw_state.h), 1, name='bidirectional_concat_h')
+                self.encoder_state = LSTMStateTuple(c=encoder_state_c, h=encoder_state_h)
 
-            self.encoder_state = LSTMStateTuple(c=encoder_state_c, h=encoder_state_h)
+            elif isinstance(encoder_fw_state, tf.Tensor):
+                self.encoder_state = tf.concat_v2((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
 
     def _init_decoder(self):
         with tf.variable_scope("Decoder") as scope:
@@ -185,12 +200,13 @@ class Seq2SeqModel():
                     output_fn=output_fn,
                     encoder_state=self.encoder_state,
                     embeddings=self.embedding_matrix,
-                    start_of_sequence_id=1,
-                    end_of_sequence_id=1,
+                    start_of_sequence_id=self.EOS,
+                    end_of_sequence_id=self.EOS,
                     maximum_length=tf.reduce_max(self.encoder_inputs_length) + 3,
                     num_decoder_symbols=self.vocab_size,
                 )
             else:
+
                 # attention_states: size [batch_size, max_time, num_units]
                 attention_states = tf.transpose(self.encoder_outputs, [1, 0, 2])
 
@@ -200,7 +216,7 @@ class Seq2SeqModel():
                 attention_construct_fn) = seq2seq.prepare_attention(
                     attention_states=attention_states,
                     attention_option="bahdanau",
-                    num_units=self.decoder_hidden_units, # @TODO
+                    num_units=self.decoder_hidden_units,
                 )
 
                 decoder_fn_train = seq2seq.attention_decoder_fn_train(
@@ -281,86 +297,101 @@ class Seq2SeqModel():
         }
 
 
+def make_seq2seq_model(**kwargs):
+    args = dict(encoder_cell=LSTMCell(10),
+                decoder_cell=LSTMCell(20),
+                vocab_size=10,
+                embedding_size=10,
+                attention=True,
+                bidirectional=True,
+                debug=False)
+    args.update(kwargs)
+    return Seq2SeqModel(**args)
+
+
+def train_seq2seq_model(session, model,
+                        batch_size=100,
+                        max_batches=5000,
+                        batches_in_epoch=1000):
+    batches = helpers.random_sequences(length_from=3, length_to=8,
+                                        vocab_lower=2, vocab_upper=10,
+                                        batch_size=batch_size)
+    loss_track = []
+    nested_transpose = lambda l: [x.T for x in l]
+    try:
+        for batch in range(max_batches):
+            batch_data = next(batches)
+            fd = model.make_train_inputs(batch_data, batch_data)
+            _, l = session.run([model.train_op, model.loss], fd)
+            loss_track.append(l)
+
+            if batch == 0 or batch % batches_in_epoch == 0:
+                print('batch {}'.format(batch))
+                print('  minibatch loss: {}'.format(session.run(model.loss, fd)))
+                for i, (e_in, d_tg, dt_in, dt_tg, dt_pred) in enumerate(zip(
+                        fd[model.encoder_inputs].T,
+                        fd[model.decoder_targets].T,
+                        *nested_transpose(session.run([
+                            model.decoder_train_inputs,
+                            model.decoder_train_targets,
+                            model.decoder_prediction_train,
+                        ], fd))
+                    )):
+                    print('  sample {}:'.format(i + 1))
+                    print('    enc input           > {}'.format(e_in))
+                    #print('    dec target          > {}'.format(d_tg))
+                    #print('    dec train input     > {}'.format(dt_in))
+                    #print('    dec train target    > {}'.format(dt_tg))
+                    print('    dec train predicted > {}'.format(dt_pred))
+                    if i >= 2:
+                        break
+                print()
+    except KeyboardInterrupt:
+        print('training interrupted')
+
+    return loss_track
+
 
 if __name__ == '__main__':
-
-    import traceback
-    import warnings
     import sys
 
-    def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
-        traceback.print_stack()
-        log = file if hasattr(file,'write') else sys.stderr
-        log.write(warnings.formatwarning(message, category, filename, lineno, line))
-
-    warnings.showwarning = warn_with_traceback
 
     if 'debug-fw' in sys.argv:
         tf.reset_default_graph()
         sess = tf.InteractiveSession()
-        model = Seq2SeqModel(debug=True, attention=True)
+        model = make_seq2seq_model(debug=True)
         sess.run(tf.global_variables_initializer())
         print(model.loss.eval())
 
     elif 'train' in sys.argv:
-        tf.reset_default_graph()
-        sess = tf.InteractiveSession()
-        model = Seq2SeqModel(attention=False)
-        sess.run(tf.global_variables_initializer())
-        batch_size = 100
-        max_batches = 100000
-        batches_in_epoch = 1000
-        batches = helpers.random_sequences(length_from=3, length_to=8,
-                                           vocab_lower=2, vocab_upper=10,
-                                           batch_size=batch_size)
-        loss_track = []
-        nested_transpose = lambda l: [x.T for x in l]
-        try:
-            for batch in range(max_batches):
-                batch_data = next(batches)
-                fd = model.make_train_inputs(batch_data, batch_data)
-                _, l = sess.run([model.train_op, model.loss], fd)
-                loss_track.append(l)
+        tracks = {}
 
-                if batch == 0 or batch % batches_in_epoch == 0:
-                    print('batch {}'.format(batch))
-                    print('  minibatch loss: {}'.format(sess.run(model.loss, fd)))
-                    for i, (e_in, d_tg, dt_in, dt_tg, dt_pred) in enumerate(zip(
-                            fd[model.encoder_inputs].T,
-                            fd[model.decoder_targets].T,
-                            *nested_transpose(sess.run([
-                                model.decoder_train_inputs,
-                                model.decoder_train_targets,
-                                model.decoder_prediction_train,
-                            ], fd))
-                        )):
-                        print('  sample {}:'.format(i + 1))
-                        print('    enc input           > {}'.format(e_in))
-                        #print('    dec target          > {}'.format(d_tg))
-                        #print('    dec train input     > {}'.format(dt_in))
-                        #print('    dec train target    > {}'.format(dt_tg))
-                        print('    dec train predicted > {}'.format(dt_pred))
-                        if i >= 2:
-                            break
-                    print()
-        except KeyboardInterrupt:
-            print('training interrupted')
+        with tf.Session() as session:
+            #tf.reset_default_graph()
+            model = make_seq2seq_model(attention=True)
+            session.run(tf.global_variables_initializer())
+            tracks['attention'] = train_seq2seq_model(session, model)
+
+        with tf.Session() as session:
+            tf.reset_default_graph()
+            model = make_seq2seq_model(attention=False)
+            session.run(tf.global_variables_initializer())
+            tracks['no-attention'] = train_seq2seq_model(session, model)
 
         import matplotlib.pyplot as plt
         plt.plot(loss_track)
-        print('loss {:.4f} after {} examples (batch_size={})'      .format(loss_track[-1], len(loss_track)*batch_size,
-                    batch_size))
+        print('loss {:.4f} after {} examples (batch_size={})'.format(loss_track[-1], len(loss_track)*batch_size, batch_size))
 
-        def inference(seq):
-            fd = model.make_inference_inputs([seq])
-            print(sess.run(model.decoder_prediction_inference, fd))
+        # def inference(seq):
+        #     fd = model.make_inference_inputs([seq])
+        #     return sess.run(model.decoder_prediction_inference, fd).T
 
     else:
         tf.reset_default_graph()
-        sess = tf.InteractiveSession()
-        model = Seq2SeqModel(attention=True)
-        sess.run(tf.global_variables_initializer())
+        session = tf.InteractiveSession()
+        model = make_seq2seq_model(debug=False)
+        session.run(tf.global_variables_initializer())
 
         fd = model.make_inference_inputs([[5, 4, 6, 7], [6, 6]])
 
-        inf_out = sess.run(model.decoder_prediction_inference, fd)
+        inf_out = session.run(model.decoder_prediction_inference, fd)
