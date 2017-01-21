@@ -318,7 +318,6 @@ def train_on_copy_task(session, model,
                                        vocab_lower=vocab_lower, vocab_upper=vocab_upper,
                                        batch_size=batch_size)
     loss_track = []
-    nested_transpose = lambda l: [x.T for x in l]
     try:
         for batch in range(max_batches+1):
             batch_data = next(batches)
@@ -330,20 +329,12 @@ def train_on_copy_task(session, model,
                 if batch == 0 or batch % batches_in_epoch == 0:
                     print('batch {}'.format(batch))
                     print('  minibatch loss: {}'.format(session.run(model.loss, fd)))
-                    for i, (e_in, d_tg, dt_in, dt_tg, dt_pred) in enumerate(zip(
+                    for i, (e_in, dt_pred) in enumerate(zip(
                             fd[model.encoder_inputs].T,
-                            fd[model.decoder_targets].T,
-                            *nested_transpose(session.run([
-                                model.decoder_train_inputs,
-                                model.decoder_train_targets,
-                                model.decoder_prediction_train,
-                            ], fd))
+                            session.run(model.decoder_prediction_train, fd).T
                         )):
                         print('  sample {}:'.format(i + 1))
                         print('    enc input           > {}'.format(e_in))
-                        #print('    dec target          > {}'.format(d_tg))
-                        #print('    dec train input     > {}'.format(dt_in))
-                        #print('    dec train target    > {}'.format(dt_tg))
                         print('    dec train predicted > {}'.format(dt_pred))
                         if i >= 2:
                             break
@@ -368,6 +359,8 @@ if __name__ == '__main__':
     elif 'fw-inf' in sys.argv:
         tf.reset_default_graph()
         with tf.Session() as session:
+            model = make_seq2seq_model()
+            session.run(tf.global_variables_initializer())
             fd = model.make_inference_inputs([[5, 4, 6, 7], [6, 6]])
             inf_out = session.run(model.decoder_prediction_inference, fd)
             print(inf_out)
