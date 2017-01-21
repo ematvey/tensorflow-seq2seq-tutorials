@@ -17,5 +17,3 @@ Collection of unfinished tutorials. May be good for educational purposes.
 
 ## **3 - [playing with new `tf.contrib.seq2seq`](3-seq2seq-native-new.ipynb)**
 > New (Jan 2017) dynamic seq2seq had just landed in `contrib`. Let's see what it's made of.
-
-## **3.5 - [implementation based on new `tf.contrib.seq2seq`](model_new.py)**
