@@ -386,10 +386,6 @@ if __name__ == '__main__':
         plt.plot(loss_track)
         print('loss {:.4f} after {} examples (batch_size={})'.format(loss_track[-1], len(loss_track)*batch_size, batch_size))
 
-        # def inference(seq):
-        #     fd = model.make_inference_inputs([seq])
-        #     return sess.run(model.decoder_prediction_inference, fd).T
-
     else:
         tf.reset_default_graph()
         session = tf.InteractiveSession()
