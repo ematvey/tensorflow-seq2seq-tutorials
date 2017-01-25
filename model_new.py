@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.layers import embedding_lookup_unique
-from tensorflow.contrib.rnn import EmbeddingWrapper, LSTMCell, LSTMStateTuple, GRUCell
+from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
 
 import helpers
 
