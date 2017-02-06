@@ -107,10 +107,10 @@ class Seq2SeqModel():
             EOS_SLICE = tf.ones([1, batch_size], dtype=tf.int32) * self.EOS
             PAD_SLICE = tf.ones([1, batch_size], dtype=tf.int32) * self.PAD
 
-            self.decoder_train_inputs = tf.concat_v2([EOS_SLICE, self.decoder_targets], axis=0)
+            self.decoder_train_inputs = tf.concat([EOS_SLICE, self.decoder_targets], axis=0)
             self.decoder_train_length = self.decoder_targets_length + 1
 
-            decoder_train_targets = tf.concat_v2([self.decoder_targets, PAD_SLICE], axis=0)
+            decoder_train_targets = tf.concat([self.decoder_targets, PAD_SLICE], axis=0)
             decoder_train_targets_seq_len, _ = tf.unstack(tf.shape(decoder_train_targets))
             decoder_train_targets_eos_mask = tf.one_hot(self.decoder_train_length - 1,
                                                         decoder_train_targets_seq_len,
@@ -173,18 +173,18 @@ class Seq2SeqModel():
                                                 dtype=tf.float32)
                 )
 
-            self.encoder_outputs = tf.concat_v2((encoder_fw_outputs, encoder_fw_outputs), 2)
+            self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_fw_outputs), 2)
 
             if isinstance(encoder_fw_state, LSTMStateTuple):
 
-                encoder_state_c = tf.concat_v2(
+                encoder_state_c = tf.concat(
                     (encoder_fw_state.c, encoder_bw_state.c), 1, name='bidirectional_concat_c')
-                encoder_state_h = tf.concat_v2(
+                encoder_state_h = tf.concat(
                     (encoder_fw_state.h, encoder_bw_state.h), 1, name='bidirectional_concat_h')
                 self.encoder_state = LSTMStateTuple(c=encoder_state_c, h=encoder_state_h)
 
             elif isinstance(encoder_fw_state, tf.Tensor):
-                self.encoder_state = tf.concat_v2((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
+                self.encoder_state = tf.concat((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
 
     def _init_decoder(self):
         with tf.variable_scope("Decoder") as scope:
