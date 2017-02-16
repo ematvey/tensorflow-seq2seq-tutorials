@@ -5,7 +5,7 @@ import math
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.seq2seq as seq2seq
-from tensorflow.contrib.layers import embedding_lookup_unique
+from tensorflow.contrib.layers import safe_embedding_lookup_sparse as embedding_lookup_unique
 from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
 
 import helpers
@@ -142,10 +142,10 @@ class Seq2SeqModel():
                 initializer=initializer,
                 dtype=tf.float32)
 
-            self.encoder_inputs_embedded = embedding_lookup_unique(
+            self.encoder_inputs_embedded = tf.nn.embedding_lookup(
                 self.embedding_matrix, self.encoder_inputs)
 
-            self.decoder_train_inputs_embedded = embedding_lookup_unique(
+            self.decoder_train_inputs_embedded = tf.nn.embedding_lookup(
                 self.embedding_matrix, self.decoder_train_inputs)
 
     def _init_simple_encoder(self):
@@ -189,7 +189,7 @@ class Seq2SeqModel():
     def _init_decoder(self):
         with tf.variable_scope("Decoder") as scope:
             def output_fn(outputs):
-                return tf.contrib.layers.linear(outputs, self.vocab_size, scope=scope)
+                return tf.layers.dense(outputs, self.vocab_size, scope=scope)
 
             if not self.attention:
                 decoder_fn_train = seq2seq.simple_decoder_fn_train(encoder_state=self.encoder_state)
