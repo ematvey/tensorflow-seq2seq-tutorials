@@ -173,7 +173,7 @@ class Seq2SeqModel():
                                                 dtype=tf.float32)
                 )
 
-            self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_fw_outputs), 2)
+            self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs), 2)
 
             if isinstance(encoder_fw_state, LSTMStateTuple):
 
@@ -189,7 +189,7 @@ class Seq2SeqModel():
     def _init_decoder(self):
         with tf.variable_scope("Decoder") as scope:
             def output_fn(outputs):
-                return tf.layers.dense(outputs, self.vocab_size, scope=scope)
+                return tf.contrib.layers.linear(outputs, self.vocab_size, scope=scope)
 
             if not self.attention:
                 decoder_fn_train = seq2seq.simple_decoder_fn_train(encoder_state=self.encoder_state)
