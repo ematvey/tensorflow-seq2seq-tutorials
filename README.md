@@ -10,7 +10,7 @@ Collection of unfinished tutorials. May be good for educational purposes.
 *Picture from [Sutskever at al., 2014](https://arxiv.org/abs/1409.3215)*
 
 ## **2 - [advanced dynamic seq2seq](2-seq2seq-advanced.ipynb)**
-> Encoder is bidirectional now. Decoder is implemented using awesome `tf.nn.raw_rnn`. It feeds previously generated tokens during training as inputs, instead of target sequence.
+> Encoder is bidirectional now. Decoder is implemented using `tf.nn.raw_rnn`. It feeds previously generated tokens during training as inputs, instead of target sequence.
 
 ![2-seq2seq-feed-previous](pictures/2-seq2seq-feed-previous.png)
 *Picture from [Deep Learning for Chatbots](http://www.wildml.com/2016/04/deep-learning-for-chatbots-part-1-introduction/)*
