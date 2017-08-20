@@ -17,5 +17,5 @@ Collection of unfinished tutorials. May be good for educational purposes.
 
 ## **3 - [Using `tf.contrib.seq2seq`](3-seq2seq-native-new.ipynb)** (TF<=1.1)
 > New dynamic seq2seq appeared in r1.0. Let's try it.
-Note that this tutorial doesn't work with tf version > 1.1, API.
-I recommend checking out new [official tutorial](https://github.com/tensorflow/nmt) instead to learn new high-level seq2seq API.
+
+UPDATE: that this tutorial doesn't work with tf version > 1.1, API. I recommend checking out new [official tutorial](https://github.com/tensorflow/nmt) instead to learn high-level seq2seq API.
